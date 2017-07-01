@@ -7,7 +7,7 @@
 
 该repo下共有三个文件：
 
-- ```Seq2seq_char.ipynb```是jupyter notebook可执行文件**（推荐使用）**
+- ```Seq2seq_char.ipynb```是jupyter notebook可执行文件（推荐使用）
 - ```Seq2seq_char.html```是html文件，方便查看代码结果
 - ```Seq2seq_char.py```是由jupyter notebook转化的py文件
 
