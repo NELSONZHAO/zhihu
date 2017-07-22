@@ -1,3 +1,6 @@
+![](https://raw.githubusercontent.com/NELSONZHAO/zhihu/master/cifar_cnn/example_pic.png)
+
+
 # 说明
 该部分包含两个文件：
 
