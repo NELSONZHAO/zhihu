@@ -377,15 +377,15 @@ def get_batches(targets, sources, batch_size, source_pad_int, target_pad_int):
         pad_targets_batch = np.array(pad_sentence_batch(targets_batch, target_pad_int))
         
         # 记录每条记录的长度
-        pad_targets_lengths = []
-        for target in pad_targets_batch:
-            pad_targets_lengths.append(len(target))
+        targets_lengths = []
+        for target in targets_batch:
+            targets_lengths.append(len(target))
         
-        pad_source_lengths = []
-        for source in pad_sources_batch:
-            pad_source_lengths.append(len(source))
+        source_lengths = []
+        for source in sources_batch:
+            source_lengths.append(len(source))
         
-        yield pad_targets_batch, pad_sources_batch, pad_targets_lengths, pad_source_lengths
+        yield pad_targets_batch, pad_sources_batch, targets_lengths, source_lengths
 
 
 # ## Train
