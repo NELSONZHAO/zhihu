@@ -47,5 +47,14 @@
 > 文章地址：[生成对抗网络（GAN）之MNIST数据生成](https://zhuanlan.zhihu.com/p/28057434)
 ![](https://raw.githubusercontent.com/NELSONZHAO/zhihu/master/mnist_gan/gan_examples.png)
 
+### ```8.dcgan```
+基于MNIST数据集训练了一个DCGAN，加入了Batch normalization，加速模型收敛并提升新能。
+> 文章地址：[深度卷积GAN之图像生成](https://zhuanlan.zhihu.com/p/28329335)
+![](https://raw.githubusercontent.com/NELSONZHAO/zhihu/master/dcgan/mnist_dcgan_pic.png)
+
+基于CIFAR数据集中的马的图像训练一个DCGAN生成马的图像。
+![](https://raw.githubusercontent.com/NELSONZHAO/zhihu/master/dcgan/cifar_dcgan_pic.png)
+
+
 
 ### 不定期更新干货，欢迎Star，欢迎Fork。
