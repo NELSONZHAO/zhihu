@@ -52,7 +52,7 @@
 > 文章地址：[深度卷积GAN之图像生成](https://zhuanlan.zhihu.com/p/28329335)
 ![](https://raw.githubusercontent.com/NELSONZHAO/zhihu/master/dcgan/mnist_dcgan_pic.png)
 
-基于CIFAR数据集中的马的图像训练一个DCGAN生成马的图像。
+> 基于CIFAR数据集中的马的图像训练一个DCGAN生成马的图像。
 ![](https://raw.githubusercontent.com/NELSONZHAO/zhihu/master/dcgan/cifar_dcgan_pic.png)
 
 
