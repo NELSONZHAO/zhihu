@@ -61,4 +61,4 @@
 ![](https://raw.githubusercontent.com/NELSONZHAO/zhihu/master/batch_normalization_discussion/bn_example.png)
 
 
-###不定期更新干货，欢迎Star，欢迎Fork。
+### 不定期更新干货，欢迎Star，欢迎Fork。
