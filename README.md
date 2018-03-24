@@ -57,7 +57,8 @@
 ![](https://raw.githubusercontent.com/NELSONZHAO/zhihu/master/dcgan/cifar_dcgan_pic.png)
 
 ### 9.batch\_normalization\_discussion
-该部分代码基于MNIST手写数据集构造了一个三层的全连接层神经网络。通过改变不同参数来测试BN对于模型性能的影响。同时利用TensorFlow实现底层的batch normalization。
+该部分代码基于MNIST手写数据集构造了一个四层的全连接层神经网络。通过改变不同参数来测试BN对于模型性能的影响。同时利用TensorFlow实现底层的batch normalization。
+> 文章地址：[Batch Normalization原理与实战](https://zhuanlan.zhihu.com/p/34879333)
 ![](https://raw.githubusercontent.com/NELSONZHAO/zhihu/master/batch_normalization_discussion/bn_example.png)
 
 
