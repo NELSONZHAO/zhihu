@@ -1,0 +1,1291 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Introduction\n",
+    "\n",
+    "本文是基于TensorFlow 1.6版本的Seq2Seq模型实现了一个机器翻译（Machine Translation）模型的baseline。\n",
+    "\n",
+    "本篇代码与去年我在知乎专栏上发表的[从Encoder到Decoder实现Seq2Seq模型](https://zhuanlan.zhihu.com/p/27608348)大同小异，更新的原因有以下几个方面：\n",
+    "- 去年文章接口实现采用TensorFlow 1.1实现，有些接口已经发生变化，导致代码下载以后部分片段无法正常运行；\n",
+    "- 文章部分写作内容描述不够清晰，本篇文章对一些表达不当的地方进行重构；\n",
+    "- 之前的Seq2Seq模型是对单词的字母进行排序，数据处理部分相对较为简单。而此次将采用英法平行语料来构建翻译模型，增加一些数据处理操作；\n",
+    "- 专栏下一篇文章准备写关于改进版本的Machine Translation模型，包括使用BiRNN和Attention机制的模型（将采用Keras实现），此篇文章可以来做些许铺垫。"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# 1 - Import packages"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "metadata": {
+    "collapsed": true,
+    "scrolled": true
+   },
+   "outputs": [],
+   "source": [
+    "import warnings\n",
+    "warnings.filterwarnings(\"ignore\")\n",
+    "import numpy as np\n",
+    "import tensorflow as tf\n",
+    "import matplotlib.pyplot as plt\n",
+    "import tqdm\n",
+    "\n",
+    "%matplotlib inline"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "'1.6.0'"
+      ]
+     },
+     "execution_count": 4,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "tf.__version__"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# 2 - Data Process\n",
+    "\n",
+    "数据处理包括以下部分：\n",
+    "- 加载数据。本篇文章使用的数据是English-French平行语料（parallel corpus）。\n",
+    "    - small_vocab_en文件包含了英文原始语料，其中每一行代表一个完整的句子\n",
+    "    - small_vocab_fr文件包含了法语原始语料，其中每一行代表一个完整的句子\n",
+    "- 数据探索。即对语料文本的统计性描述\n",
+    "- 数据预处理。\n",
+    "    - 构造英文词典（vocabulary），对单词进行编码\n",
+    "    - 构造法语词典（vocabulary），对单词进行编码\n",
+    "- 语料转换。\n",
+    "    - 将原始英文文本转换为机器可识别的编码\n",
+    "    - 将原始法语文本转换为机器可识别的编码"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 2.1 - 加载原始数据与目标数据"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "# English source data\n",
+    "with open(\"data/small_vocab_en\", \"r\", encoding=\"utf-8\") as f:\n",
+    "    source_text = f.read()\n",
+    "\n",
+    "# French target data\n",
+    "with open(\"data/small_vocab_fr\", \"r\", encoding=\"utf-8\") as f:\n",
+    "    target_text = f.read()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 2.2 - 统计性描述\n",
+    "\n",
+    "对我们的英语-法语平行语料数据进行统计：\n",
+    "\n",
+    "- 英文语料包含的句子数，平均句子长度以及最大句子长度\n",
+    "- 法语语料包含的句子数，平均句子长度以及最大句子长度\n",
+    "- 英文语料的前10句话\n",
+    "- 法语语料的前10句话"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Dataset Stats\n",
+      "Roughly the number of unique words: 227\n",
+      "-----English Text-----\n",
+      "Number of sentences: 137861\n",
+      "Average number of words in a sentence: 13.225277634719028\n",
+      "Max number of words in a sentence: 17\n",
+      "\n",
+      "-----French Text-----\n",
+      "Number of sentences: 137861\n",
+      "Average number of words in a sentence: 14.226612312401622\n",
+      "Max number of words in a sentence: 23\n",
+      "\n",
+      "English sentences 0 to 10:\n",
+      "new jersey is sometimes quiet during autumn , and it is snowy in april .\n",
+      "the united states is usually chilly during july , and it is usually freezing in november .\n",
+      "california is usually quiet during march , and it is usually hot in june .\n",
+      "the united states is sometimes mild during june , and it is cold in september .\n",
+      "your least liked fruit is the grape , but my least liked is the apple .\n",
+      "his favorite fruit is the orange , but my favorite is the grape .\n",
+      "paris is relaxing during december , but it is usually chilly in july .\n",
+      "new jersey is busy during spring , and it is never hot in march .\n",
+      "our least liked fruit is the lemon , but my least liked is the grape .\n",
+      "the united states is sometimes busy during january , and it is sometimes warm in november .\n",
+      "\n",
+      "French sentences 0 to 10:\n",
+      "new jersey est parfois calme pendant l' automne , et il est neigeux en avril .\n",
+      "les états-unis est généralement froid en juillet , et il gèle habituellement en novembre .\n",
+      "california est généralement calme en mars , et il est généralement chaud en juin .\n",
+      "les états-unis est parfois légère en juin , et il fait froid en septembre .\n",
+      "votre moins aimé fruit est le raisin , mais mon moins aimé est la pomme .\n",
+      "son fruit préféré est l'orange , mais mon préféré est le raisin .\n",
+      "paris est relaxant en décembre , mais il est généralement froid en juillet .\n",
+      "new jersey est occupé au printemps , et il est jamais chaude en mars .\n",
+      "notre fruit est moins aimé le citron , mais mon moins aimé est le raisin .\n",
+      "les états-unis est parfois occupé en janvier , et il est parfois chaud en novembre .\n"
+     ]
+    }
+   ],
+   "source": [
+    "view_sentence_range = (0, 10)\n",
+    "\n",
+    "# 下面这是对原始文本按照空格分开，这样就可以查看原始文本中到底包含了多少个单词\n",
+    "print('Dataset Stats')\n",
+    "print('Roughly the number of unique words: {}'.format(len({word: None for word in source_text.split()})))\n",
+    "\n",
+    "# 按照换行符将原始文本分割成句子\n",
+    "print(\"-\"*5 + \"English Text\" + \"-\"*5)\n",
+    "sentences = source_text.split('\\n')\n",
+    "word_counts = [len(sentence.split()) for sentence in sentences]\n",
+    "print('Number of sentences: {}'.format(len(sentences)))\n",
+    "print('Average number of words in a sentence: {}'.format(np.average(word_counts)))\n",
+    "print('Max number of words in a sentence: {}'.format(np.max(word_counts)))\n",
+    "\n",
+    "print()\n",
+    "print(\"-\"*5 + \"French Text\" + \"-\"*5)\n",
+    "sentences = target_text.split('\\n')\n",
+    "word_counts = [len(sentence.split()) for sentence in sentences]\n",
+    "print('Number of sentences: {}'.format(len(sentences)))\n",
+    "print('Average number of words in a sentence: {}'.format(np.average(word_counts)))\n",
+    "print('Max number of words in a sentence: {}'.format(np.max(word_counts)))\n",
+    "\n",
+    "print()\n",
+    "print('English sentences {} to {}:'.format(*view_sentence_range))\n",
+    "print('\\n'.join(source_text.split('\\n')[view_sentence_range[0]:view_sentence_range[1]]))\n",
+    "print()\n",
+    "print('French sentences {} to {}:'.format(*view_sentence_range))\n",
+    "print('\\n'.join(target_text.split('\\n')[view_sentence_range[0]:view_sentence_range[1]]))"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 2.3 - 数据预处理\n",
+    "\n",
+    "机器翻译模型的基本架构是Seq2Seq模型，在构造模型之前，我们需要先对语料进行处理。即将文本语料转化为机器所能识别的数字。例如，对英文句子：I love machine learning and deep learning.编码为数字[28, 29, 274, 873, 12, 983, 873]。因此本部分主要完成以下几个任务：\n",
+    "\n",
+    "- 根据语料构造英文与法语的字典（vocabulary）\n",
+    "- 构造英语与法语的映射，即将单词转换为数字的字典\n",
+    "- 构造英语与法语的反向映射，即从数字转换为单词的字典"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "# 构造英文词典\n",
+    "source_vocab = list(set(source_text.lower().split()))\n",
+    "# 构造法文词典\n",
+    "target_vocab = list(set(target_text.lower().split()))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 5,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "The size of English vocab is : 227\n",
+      "The size of French vocab is : 354\n"
+     ]
+    }
+   ],
+   "source": [
+    "print(\"The size of English vocab is : {}\".format(len(source_vocab)))\n",
+    "print(\"The size of French vocab is : {}\".format(len(target_vocab)))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 6,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "# 特殊字符\n",
+    "SOURCE_CODES = ['<PAD>', '<UNK>']\n",
+    "TARGET_CODES = ['<PAD>', '<EOS>', '<UNK>', '<GO>']  # 在target中，需要增加<GO>与<EOS>特殊字符"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 7,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "# 构造英文映射字典\n",
+    "source_vocab_to_int = {word: idx for idx, word in enumerate(SOURCE_CODES + source_vocab)}\n",
+    "source_int_to_vocab = {idx: word for idx, word in enumerate(SOURCE_CODES + source_vocab)}\n",
+    "\n",
+    "# 构造法语映射词典\n",
+    "target_vocab_to_int = {word: idx for idx, word in enumerate(TARGET_CODES + target_vocab)}\n",
+    "target_int_to_vocab = {idx: word for idx, word in enumerate(TARGET_CODES + target_vocab)}"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 8,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "The size of English Map is : 229\n",
+      "The size of French Map is : 358\n"
+     ]
+    }
+   ],
+   "source": [
+    "print(\"The size of English Map is : {}\".format(len(source_vocab_to_int)))\n",
+    "print(\"The size of French Map is : {}\".format(len(target_vocab_to_int)))"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 2.4 - 语料转换\n",
+    "\n",
+    "有了以上的词典与映射关系，我们就可以基于这些数据对文本进行转换，即将文本转换为数字。在转换过程中，由于我们LSTM只能处理定长的数据，因此我们需要保证输入语料的长度Tx与输出语料的长度Ty保持固定。假设Tx=20，则对于不足20个单词的句子进行PAD，对超过20个单词的句子进行截断。\n",
+    "\n",
+    "例如，对于句子”I love machine learning and deep learning\"，编码后为[28, 29, 274, 873, 12, 983, 873, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]。"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 9,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "def text_to_int(sentence, map_dict, max_length=20, is_target=False):\n",
+    "    \"\"\"\n",
+    "    对文本句子进行数字编码\n",
+    "    \n",
+    "    @param sentence: 一个完整的句子，str类型\n",
+    "    @param map_dict: 单词到数字的映射，dict\n",
+    "    @param max_length: 句子的最大长度\n",
+    "    @param is_target: 是否为目标语句。在这里要区分目标句子与源句子，因为对于目标句子（即翻译后的句子）我们需要在句子最后增加<EOS>\n",
+    "    \"\"\"\n",
+    "    \n",
+    "    # 用<PAD>填充整个序列\n",
+    "    text_to_idx = []\n",
+    "    # unk index\n",
+    "    unk_idx = map_dict.get(\"<UNK>\")\n",
+    "    pad_idx = map_dict.get(\"<PAD>\")\n",
+    "    eos_idx = map_dict.get(\"<EOS>\")\n",
+    "    \n",
+    "    # 如果是输入源文本\n",
+    "    if not is_target:\n",
+    "        for word in sentence.lower().split():\n",
+    "            text_to_idx.append(map_dict.get(word, unk_idx))\n",
+    "    \n",
+    "    # 否则，对于输出目标文本需要做<EOS>的填充最后\n",
+    "    else:\n",
+    "        for word in sentence.lower().split():\n",
+    "            text_to_idx.append(map_dict.get(word, unk_idx))\n",
+    "        text_to_idx.append(eos_idx)\n",
+    "    \n",
+    "    # 如果超长需要截断\n",
+    "    if len(text_to_idx) > max_length:\n",
+    "        return text_to_idx[:max_length]\n",
+    "    # 如果不够则增加<PAD>\n",
+    "    else:\n",
+    "        text_to_idx = text_to_idx + [pad_idx] * (max_length - len(text_to_idx))\n",
+    "        return text_to_idx"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 10,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "100%|██████████| 137861/137861 [00:01<00:00, 135732.57it/s]\n"
+     ]
+    }
+   ],
+   "source": [
+    "# 对源句子进行转换 Tx = 20\n",
+    "source_text_to_int = []\n",
+    "\n",
+    "for sentence in tqdm.tqdm(source_text.split(\"\\n\")):\n",
+    "    source_text_to_int.append(text_to_int(sentence, source_vocab_to_int, 20, \n",
+    "                                          is_target=False))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 11,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "100%|██████████| 137861/137861 [00:01<00:00, 105389.69it/s]\n"
+     ]
+    }
+   ],
+   "source": [
+    "# 对目标句子进行转换  Ty = 25\n",
+    "target_text_to_int = []\n",
+    "\n",
+    "for sentence in tqdm.tqdm(target_text.split(\"\\n\")):\n",
+    "    target_text_to_int.append(text_to_int(sentence, target_vocab_to_int, 25, \n",
+    "                                          is_target=True))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 12,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "-----English example-----\n",
+      "the united states is never beautiful during march , and it is usually relaxing in summer .\n",
+      "[196, 184, 95, 14, 123, 106, 81, 146, 210, 62, 169, 14, 129, 3, 208, 164, 150, 0, 0, 0]\n",
+      "\n",
+      "-----French example-----\n",
+      "les états-unis est jamais belle en mars , et il est relaxant habituellement en été .\n",
+      "[264, 141, 114, 222, 6, 289, 329, 93, 145, 43, 114, 8, 159, 289, 32, 61, 1, 0, 0, 0, 0, 0, 0, 0, 0]\n"
+     ]
+    }
+   ],
+   "source": [
+    "random_index = 77\n",
+    "\n",
+    "print(\"-\"*5 + \"English example\" + \"-\"*5)\n",
+    "print(source_text.split(\"\\n\")[random_index])\n",
+    "print(source_text_to_int[random_index])\n",
+    "\n",
+    "print()\n",
+    "print(\"-\"*5 + \"French example\" + \"-\"*5)\n",
+    "print(target_text.split(\"\\n\")[random_index])\n",
+    "print(target_text_to_int[random_index])"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 13,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "X = np.array(source_text_to_int)\n",
+    "Y = np.array(target_text_to_int)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# 3 构建模型\n",
+    "\n",
+    "- 模型输入 model_inputs\n",
+    "- Encoder端 encoder_layer\n",
+    "- Decoder端\n",
+    "    - Decoder输入端 decoder_layer_inputs\n",
+    "    - Decoder训练 decoder_layer_train\n",
+    "    - Decoder预测/推断 decoder_layer_inference\n",
+    "- Seq2Seq模型"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 3.1 - 模型输入"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 14,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "def model_inputs():\n",
+    "    \"\"\"\n",
+    "    构造输入\n",
+    "    \n",
+    "    返回：inputs, targets, learning_rate, source_sequence_len, target_sequence_len, max_target_sequence_len，类型为tensor\n",
+    "    \"\"\"\n",
+    "    inputs = tf.placeholder(tf.int32, [None, None], name=\"inputs\")\n",
+    "    targets = tf.placeholder(tf.int32, [None, None], name=\"targets\")\n",
+    "    learning_rate = tf.placeholder(tf.float32, name=\"learning_rate\")\n",
+    "    \n",
+    "    source_sequence_len = tf.placeholder(tf.int32, (None,), name=\"source_sequence_len\")\n",
+    "    target_sequence_len = tf.placeholder(tf.int32, (None,), name=\"target_sequence_len\")\n",
+    "    max_target_sequence_len = tf.placeholder(tf.int32, (None,), name=\"max_target_sequence_len\")\n",
+    "    \n",
+    "    return inputs, targets, learning_rate, source_sequence_len, target_sequence_len, max_target_sequence_len"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 3.2 - Encoder端"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 15,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "def encoder_layer(rnn_inputs, rnn_size, rnn_num_layers,\n",
+    "                  source_sequence_len, source_vocab_size, encoder_embedding_size=100):\n",
+    "    \"\"\"\n",
+    "    构造Encoder端\n",
+    "    \n",
+    "    @param rnn_inputs: rnn的输入\n",
+    "    @param rnn_size: rnn的隐层结点数\n",
+    "    @param rnn_num_layers: rnn的堆叠层数\n",
+    "    @param source_sequence_len: 英文句子序列的长度\n",
+    "    @param source_vocab_size: 英文词典的大小\n",
+    "    @param encoder_embedding_size: Encoder层中对单词进行词向量嵌入后的维度 \n",
+    "    \"\"\"\n",
+    "    # 对输入的单词进行词向量嵌入\n",
+    "    encoder_embed = tf.contrib.layers.embed_sequence(rnn_inputs, source_vocab_size, encoder_embedding_size)\n",
+    "    \n",
+    "    # LSTM单元\n",
+    "    def get_lstm(rnn_size):\n",
+    "        lstm = tf.contrib.rnn.LSTMCell(rnn_size, initializer=tf.random_uniform_initializer(-0.1, 0.1, seed=123))\n",
+    "        return lstm\n",
+    "    \n",
+    "    # 堆叠rnn_num_layers层LSTM\n",
+    "    lstms = tf.contrib.rnn.MultiRNNCell([get_lstm(rnn_size) for _ in range(rnn_num_layers)])\n",
+    "    encoder_outputs, encoder_states = tf.nn.dynamic_rnn(lstms, encoder_embed, source_sequence_len, \n",
+    "                                                        dtype=tf.float32)\n",
+    "    \n",
+    "    return encoder_outputs, encoder_states"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 3.2 - Decoder端\n",
+    "\n",
+    "### 3.2.1 - Decoder Layer Inputs"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 16,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "def decoder_layer_inputs(target_data, target_vocab_to_int, batch_size):\n",
+    "    \"\"\"\n",
+    "    对Decoder端的输入进行处理\n",
+    "    \n",
+    "    @param target_data: 法语数据的tensor\n",
+    "    @param target_vocab_to_int: 法语数据的词典到索引的映射\n",
+    "    @param batch_size: batch size\n",
+    "    \"\"\"\n",
+    "    # 去掉batch中每个序列句子的最后一个单词\n",
+    "    ending = tf.strided_slice(target_data, [0, 0], [batch_size, -1], [1, 1])\n",
+    "    # 在batch中每个序列句子的前面添加”<GO>\"\n",
+    "    decoder_inputs = tf.concat([tf.fill([batch_size, 1], target_vocab_to_int[\"<GO>\"]), \n",
+    "                                ending], 1)\n",
+    "    \n",
+    "    return decoder_inputs"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### 3.2.2 - Decoder Traing"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 17,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "def decoder_layer_train(encoder_states, decoder_cell, decoder_embed,\n",
+    "                        target_sequence_len, max_target_sequence_len, output_layer):\n",
+    "    \n",
+    "    \"\"\"\n",
+    "    Decoder端的训练\n",
+    "    \n",
+    "    @param encoder_states: Encoder端编码得到的Context Vector\n",
+    "    @param decoder_cell: Decoder端\n",
+    "    @param decoder_embed: Decoder端词向量嵌入后的输入\n",
+    "    @param target_sequence_len: 法语文本的长度\n",
+    "    @param max_target_sequence_len: 法语文本的最大长度\n",
+    "    @param output_layer: 输出层\n",
+    "    \"\"\"\n",
+    "    \n",
+    "    # 生成helper对象\n",
+    "    training_helper = tf.contrib.seq2seq.TrainingHelper(inputs=decoder_embed,\n",
+    "                                                       sequence_length=target_sequence_len,\n",
+    "                                                       time_major=False)\n",
+    "    \n",
+    "    training_decoder = tf.contrib.seq2seq.BasicDecoder(decoder_cell,\n",
+    "                                                      training_helper,\n",
+    "                                                      encoder_states,\n",
+    "                                                      output_layer)\n",
+    "    \n",
+    "    training_decoder_outputs, _, _ = tf.contrib.seq2seq.dynamic_decode(training_decoder,\n",
+    "                                                                  impute_finished=True,\n",
+    "                                                                  maximum_iterations=max_target_sequence_len)\n",
+    "    \n",
+    "    return training_decoder_outputs"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### 3.2.3 - Decoder Inference"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 18,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "def decoder_layer_infer(encoder_states, decoder_cell, decoder_embed, start_id, end_id, \n",
+    "                        max_target_sequence_len, output_layer, batch_size):\n",
+    "    \"\"\"\n",
+    "    Decoder端的预测/推断\n",
+    "    \n",
+    "    @param encoder_states: Encoder端编码得到的Context Vector\n",
+    "    @param decoder_cell: Decoder端\n",
+    "    @param decoder_embed: Decoder端词向量嵌入后的输入\n",
+    "    @param start_id: 句子起始单词的token id， 即\"<GO>\"的编码\n",
+    "    @param end_id: 句子结束的token id，即\"<EOS>\"的编码\n",
+    "    @param max_target_sequence_len: 法语文本的最大长度\n",
+    "    @param output_layer: 输出层\n",
+    "    @batch_size: batch size\n",
+    "    \"\"\"\n",
+    "    \n",
+    "    start_tokens = tf.tile(tf.constant([start_id], dtype=tf.int32), [batch_size], name=\"start_tokens\")\n",
+    "    \n",
+    "    inference_helper = tf.contrib.seq2seq.GreedyEmbeddingHelper(decoder_embed,\n",
+    "                                                                start_tokens,\n",
+    "                                                                end_id)\n",
+    "    \n",
+    "    inference_decoder = tf.contrib.seq2seq.BasicDecoder(decoder_cell,\n",
+    "                                                       inference_helper,\n",
+    "                                                       encoder_states,\n",
+    "                                                       output_layer)\n",
+    "    \n",
+    "    inference_decoder_outputs, _, _ = tf.contrib.seq2seq.dynamic_decode(inference_decoder,\n",
+    "                                                                      impute_finished=True,\n",
+    "                                                                      maximum_iterations=max_target_sequence_len)\n",
+    "    \n",
+    "    return inference_decoder_outputs\n",
+    "    "
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### 3.2.4 - Decoder Layer"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 19,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "def decoder_layer(encoder_states, decoder_inputs, target_sequence_len, \n",
+    "                   max_target_sequence_len, rnn_size, rnn_num_layers,\n",
+    "                   target_vocab_to_int, target_vocab_size, decoder_embedding_size, batch_size):\n",
+    "    \"\"\"\n",
+    "    构造Decoder端\n",
+    "    \n",
+    "    @param encoder_states: Encoder端编码得到的Context Vector\n",
+    "    @param decoder_inputs: Decoder端的输入\n",
+    "    @param target_sequence_len: 法语文本的长度\n",
+    "    @param max_target_sequence_len: 法语文本的最大长度\n",
+    "    @param rnn_size: rnn隐层结点数\n",
+    "    @param rnn_num_layers: rnn堆叠层数\n",
+    "    @param target_vocab_to_int: 法语单词到token id的映射\n",
+    "    @param target_vocab_size: 法语词典的大小\n",
+    "    @param decoder_embedding_size: Decoder端词向量嵌入的大小\n",
+    "    @param batch_size: batch size\n",
+    "    \"\"\"\n",
+    "    \n",
+    "    decoder_embeddings = tf.Variable(tf.random_uniform([target_vocab_size, decoder_embedding_size]))\n",
+    "    decoder_embed = tf.nn.embedding_lookup(decoder_embeddings, decoder_inputs)\n",
+    "    \n",
+    "    def get_lstm(rnn_size):\n",
+    "        lstm = tf.contrib.rnn.LSTMCell(rnn_size, initializer=tf.random_uniform_initializer(-0.1, 0.1, seed=456))\n",
+    "        return lstm\n",
+    "    \n",
+    "    decoder_cell = tf.contrib.rnn.MultiRNNCell([get_lstm(rnn_size) for _ in range(rnn_num_layers)])\n",
+    "    \n",
+    "    # output_layer logits\n",
+    "    output_layer = tf.layers.Dense(target_vocab_size)\n",
+    "    \n",
+    "    with tf.variable_scope(\"decoder\"):\n",
+    "        training_logits = decoder_layer_train(encoder_states,\n",
+    "                                               decoder_cell,\n",
+    "                                               decoder_embed,\n",
+    "                                               target_sequence_len,\n",
+    "                                               max_target_sequence_len,\n",
+    "                                               output_layer)\n",
+    "    \n",
+    "    with tf.variable_scope(\"decoder\", reuse=True):\n",
+    "        inference_logits = decoder_layer_infer(encoder_states,\n",
+    "                                               decoder_cell,\n",
+    "                                               decoder_embeddings,\n",
+    "                                               target_vocab_to_int[\"<GO>\"],\n",
+    "                                               target_vocab_to_int[\"<EOS>\"],\n",
+    "                                                max_target_sequence_len,\n",
+    "                                                output_layer,\n",
+    "                                                batch_size)\n",
+    "    \n",
+    "    return training_logits, inference_logits"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 3.3 - Seq2Seq模型"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 20,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "def seq2seq_model(input_data, target_data, batch_size,\n",
+    "                 source_sequence_len, target_sequence_len, max_target_sentence_len,\n",
+    "                 source_vocab_size, target_vocab_size,\n",
+    "                 encoder_embedding_size, decoder_embeding_size,\n",
+    "                 rnn_size, rnn_num_layers, target_vocab_to_int):\n",
+    "    \n",
+    "    \"\"\"\n",
+    "    构造Seq2Seq模型\n",
+    "    \n",
+    "    @param input_data: tensor of input data\n",
+    "    @param target_data: tensor of target data\n",
+    "    @param batch_size: batch size\n",
+    "    @param source_sequence_len: 英文语料的长度\n",
+    "    @param target_sequence_len: 法语语料的长度\n",
+    "    @param max_target_sentence_len: 法语的最大句子长度\n",
+    "    @param source_vocab_size: 英文词典的大小\n",
+    "    @param target_vocab_size: 法语词典的大小\n",
+    "    @param encoder_embedding_size: Encoder端词嵌入向量大小\n",
+    "    @param decoder_embedding_size: Decoder端词嵌入向量大小\n",
+    "    @param rnn_size: rnn隐层结点数\n",
+    "    @param rnn_num_layers: rnn堆叠层数\n",
+    "    @param target_vocab_to_int: 法语单词到token id的映射\n",
+    "    \"\"\"\n",
+    "    _, encoder_states = encoder_layer(input_data, rnn_size, rnn_num_layers, source_sequence_len, \n",
+    "                                      source_vocab_size, encoder_embedding_size)\n",
+    "    \n",
+    "    decoder_inputs = decoder_layer_inputs(target_data, target_vocab_to_int, batch_size)\n",
+    "    \n",
+    "    training_decoder_outputs, inference_decoder_outputs = decoder_layer(encoder_states,\n",
+    "                                                                       decoder_inputs,\n",
+    "                                                                      target_sequence_len,\n",
+    "                                                                       max_target_sentence_len,\n",
+    "                                                                      rnn_size,\n",
+    "                                                                      rnn_num_layers,\n",
+    "                                                                      target_vocab_to_int,\n",
+    "                                                                      target_vocab_size,\n",
+    "                                                                      decoder_embeding_size,\n",
+    "                                                                       batch_size)\n",
+    "    return training_decoder_outputs, inference_decoder_outputs"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# 4 Training Model"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 4.1 - 设置参数"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 47,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "# Number of Epochs\n",
+    "epochs = 10\n",
+    "# Batch Size\n",
+    "batch_size = 128\n",
+    "# RNN Size\n",
+    "rnn_size = 128\n",
+    "# Number of Layers\n",
+    "rnn_num_layers = 1\n",
+    "# Embedding Size\n",
+    "encoder_embedding_size = 100\n",
+    "decoder_embedding_size = 100\n",
+    "# Learning Rate\n",
+    "lr = 0.001\n",
+    "# 每50轮打一次结果\n",
+    "display_step = 50"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 4.2 - 构建图"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 22,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "train_graph = tf.Graph()\n",
+    "\n",
+    "with train_graph.as_default():\n",
+    "    inputs, targets, learning_rate, source_sequence_len, target_sequence_len, _ = model_inputs()\n",
+    "    \n",
+    "    max_target_sequence_len = 25\n",
+    "    train_logits, inference_logits = seq2seq_model(tf.reverse(inputs, [-1]),\n",
+    "                                                  targets,\n",
+    "                                                  batch_size,\n",
+    "                                                  source_sequence_len,\n",
+    "                                                  target_sequence_len,\n",
+    "                                                  max_target_sequence_len,\n",
+    "                                                  len(source_vocab_to_int),\n",
+    "                                                  len(target_vocab_to_int),\n",
+    "                                                  encoder_embedding_size,\n",
+    "                                                  decoder_embedding_size,\n",
+    "                                                  rnn_size,\n",
+    "                                                  rnn_num_layers,\n",
+    "                                                  target_vocab_to_int)\n",
+    "    \n",
+    "    training_logits = tf.identity(train_logits.rnn_output, name=\"logits\")\n",
+    "    inference_logits = tf.identity(inference_logits.sample_id, name=\"predictions\")\n",
+    "    \n",
+    "    masks = tf.sequence_mask(target_sequence_len, max_target_sequence_len, dtype=tf.float32, name=\"masks\")\n",
+    "    \n",
+    "    with tf.name_scope(\"optimization\"):\n",
+    "        cost = tf.contrib.seq2seq.sequence_loss(training_logits, targets, masks)\n",
+    "        \n",
+    "        optimizer = tf.train.AdamOptimizer(learning_rate)\n",
+    "        \n",
+    "        gradients = optimizer.compute_gradients(cost)\n",
+    "        clipped_gradients = [(tf.clip_by_value(grad, -1., 1.), var) for grad, var in gradients if grad is not None]\n",
+    "        train_op = optimizer.apply_gradients(clipped_gradients)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 4.3 - 训练模型"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 35,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "def get_batches(sources, targets, batch_size):\n",
+    "    \"\"\"\n",
+    "    获取batch\n",
+    "    \"\"\"\n",
+    "    for batch_i in range(0, len(sources)//batch_size):\n",
+    "        start_i = batch_i * batch_size\n",
+    "\n",
+    "        # Slice the right amount for the batch\n",
+    "        sources_batch = sources[start_i:start_i + batch_size]\n",
+    "        targets_batch = targets[start_i:start_i + batch_size]\n",
+    "        \n",
+    "        # Need the lengths for the _lengths parameters\n",
+    "        targets_lengths = []\n",
+    "        for target in targets_batch:\n",
+    "            targets_lengths.append(len(target))\n",
+    "\n",
+    "        source_lengths = []\n",
+    "        for source in sources_batch:\n",
+    "            source_lengths.append(len(source))\n",
+    "\n",
+    "        yield sources_batch, targets_batch, source_lengths, targets_lengths"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 36,
+   "metadata": {
+    "scrolled": true
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Epoch   0 Batch   50/1077 - Loss: 2.4953\n",
+      "Epoch   0 Batch  100/1077 - Loss: 2.0857\n",
+      "Epoch   0 Batch  150/1077 - Loss: 1.6507\n",
+      "Epoch   0 Batch  200/1077 - Loss: 1.2947\n",
+      "Epoch   0 Batch  250/1077 - Loss: 1.0477\n",
+      "Epoch   0 Batch  300/1077 - Loss: 0.8714\n",
+      "Epoch   0 Batch  350/1077 - Loss: 0.7924\n",
+      "Epoch   0 Batch  400/1077 - Loss: 0.7510\n",
+      "Epoch   0 Batch  450/1077 - Loss: 0.6987\n",
+      "Epoch   0 Batch  500/1077 - Loss: 0.6134\n",
+      "Epoch   0 Batch  550/1077 - Loss: 0.6219\n",
+      "Epoch   0 Batch  600/1077 - Loss: 0.5964\n",
+      "Epoch   0 Batch  650/1077 - Loss: 0.5471\n",
+      "Epoch   0 Batch  700/1077 - Loss: 0.4888\n",
+      "Epoch   0 Batch  750/1077 - Loss: 0.4758\n",
+      "Epoch   0 Batch  800/1077 - Loss: 0.4819\n",
+      "Epoch   0 Batch  850/1077 - Loss: 0.4057\n",
+      "Epoch   0 Batch  900/1077 - Loss: 0.4156\n",
+      "Epoch   0 Batch  950/1077 - Loss: 0.3532\n",
+      "Epoch   0 Batch 1000/1077 - Loss: 0.3691\n",
+      "Epoch   0 Batch 1050/1077 - Loss: 0.3515\n",
+      "Epoch   1 Batch   50/1077 - Loss: 0.3225\n",
+      "Epoch   1 Batch  100/1077 - Loss: 0.3017\n",
+      "Epoch   1 Batch  150/1077 - Loss: 0.2679\n",
+      "Epoch   1 Batch  200/1077 - Loss: 0.2370\n",
+      "Epoch   1 Batch  250/1077 - Loss: 0.2319\n",
+      "Epoch   1 Batch  300/1077 - Loss: 0.2185\n",
+      "Epoch   1 Batch  350/1077 - Loss: 0.1982\n",
+      "Epoch   1 Batch  400/1077 - Loss: 0.1857\n",
+      "Epoch   1 Batch  450/1077 - Loss: 0.1873\n",
+      "Epoch   1 Batch  500/1077 - Loss: 0.1607\n",
+      "Epoch   1 Batch  550/1077 - Loss: 0.1729\n",
+      "Epoch   1 Batch  600/1077 - Loss: 0.1721\n",
+      "Epoch   1 Batch  650/1077 - Loss: 0.1390\n",
+      "Epoch   1 Batch  700/1077 - Loss: 0.1123\n",
+      "Epoch   1 Batch  750/1077 - Loss: 0.1249\n",
+      "Epoch   1 Batch  800/1077 - Loss: 0.1279\n",
+      "Epoch   1 Batch  850/1077 - Loss: 0.0940\n",
+      "Epoch   1 Batch  900/1077 - Loss: 0.1003\n",
+      "Epoch   1 Batch  950/1077 - Loss: 0.0810\n",
+      "Epoch   1 Batch 1000/1077 - Loss: 0.0929\n",
+      "Epoch   1 Batch 1050/1077 - Loss: 0.0892\n",
+      "Epoch   2 Batch   50/1077 - Loss: 0.0813\n",
+      "Epoch   2 Batch  100/1077 - Loss: 0.0728\n",
+      "Epoch   2 Batch  150/1077 - Loss: 0.0654\n",
+      "Epoch   2 Batch  200/1077 - Loss: 0.0546\n",
+      "Epoch   2 Batch  250/1077 - Loss: 0.0628\n",
+      "Epoch   2 Batch  300/1077 - Loss: 0.0673\n",
+      "Epoch   2 Batch  350/1077 - Loss: 0.0569\n",
+      "Epoch   2 Batch  400/1077 - Loss: 0.0551\n",
+      "Epoch   2 Batch  450/1077 - Loss: 0.0549\n",
+      "Epoch   2 Batch  500/1077 - Loss: 0.0488\n",
+      "Epoch   2 Batch  550/1077 - Loss: 0.0658\n",
+      "Epoch   2 Batch  600/1077 - Loss: 0.0704\n",
+      "Epoch   2 Batch  650/1077 - Loss: 0.0529\n",
+      "Epoch   2 Batch  700/1077 - Loss: 0.0401\n",
+      "Epoch   2 Batch  750/1077 - Loss: 0.0497\n",
+      "Epoch   2 Batch  800/1077 - Loss: 0.0588\n",
+      "Epoch   2 Batch  850/1077 - Loss: 0.0399\n",
+      "Epoch   2 Batch  900/1077 - Loss: 0.0446\n",
+      "Epoch   2 Batch  950/1077 - Loss: 0.0362\n",
+      "Epoch   2 Batch 1000/1077 - Loss: 0.0450\n",
+      "Epoch   2 Batch 1050/1077 - Loss: 0.0439\n",
+      "Epoch   3 Batch   50/1077 - Loss: 0.0452\n",
+      "Epoch   3 Batch  100/1077 - Loss: 0.0372\n",
+      "Epoch   3 Batch  150/1077 - Loss: 0.0345\n",
+      "Epoch   3 Batch  200/1077 - Loss: 0.0314\n",
+      "Epoch   3 Batch  250/1077 - Loss: 0.0362\n",
+      "Epoch   3 Batch  300/1077 - Loss: 0.0403\n",
+      "Epoch   3 Batch  350/1077 - Loss: 0.0313\n",
+      "Epoch   3 Batch  400/1077 - Loss: 0.0322\n",
+      "Epoch   3 Batch  450/1077 - Loss: 0.0334\n",
+      "Epoch   3 Batch  500/1077 - Loss: 0.0303\n",
+      "Epoch   3 Batch  550/1077 - Loss: 0.0403\n",
+      "Epoch   3 Batch  600/1077 - Loss: 0.0453\n",
+      "Epoch   3 Batch  650/1077 - Loss: 0.0312\n",
+      "Epoch   3 Batch  700/1077 - Loss: 0.0247\n",
+      "Epoch   3 Batch  750/1077 - Loss: 0.0294\n",
+      "Epoch   3 Batch  800/1077 - Loss: 0.0374\n",
+      "Epoch   3 Batch  850/1077 - Loss: 0.0260\n",
+      "Epoch   3 Batch  900/1077 - Loss: 0.0296\n",
+      "Epoch   3 Batch  950/1077 - Loss: 0.0218\n",
+      "Epoch   3 Batch 1000/1077 - Loss: 0.0303\n",
+      "Epoch   3 Batch 1050/1077 - Loss: 0.0316\n",
+      "Epoch   4 Batch   50/1077 - Loss: 0.0321\n",
+      "Epoch   4 Batch  100/1077 - Loss: 0.0236\n",
+      "Epoch   4 Batch  150/1077 - Loss: 0.0239\n",
+      "Epoch   4 Batch  200/1077 - Loss: 0.0229\n",
+      "Epoch   4 Batch  250/1077 - Loss: 0.0248\n",
+      "Epoch   4 Batch  300/1077 - Loss: 0.0283\n",
+      "Epoch   4 Batch  350/1077 - Loss: 0.0232\n",
+      "Epoch   4 Batch  400/1077 - Loss: 0.0218\n",
+      "Epoch   4 Batch  450/1077 - Loss: 0.0229\n",
+      "Epoch   4 Batch  500/1077 - Loss: 0.0232\n",
+      "Epoch   4 Batch  550/1077 - Loss: 0.0291\n",
+      "Epoch   4 Batch  600/1077 - Loss: 0.0323\n",
+      "Epoch   4 Batch  650/1077 - Loss: 0.0215\n",
+      "Epoch   4 Batch  700/1077 - Loss: 0.0180\n",
+      "Epoch   4 Batch  750/1077 - Loss: 0.0198\n",
+      "Epoch   4 Batch  800/1077 - Loss: 0.0269\n",
+      "Epoch   4 Batch  850/1077 - Loss: 0.0192\n",
+      "Epoch   4 Batch  900/1077 - Loss: 0.0228\n",
+      "Epoch   4 Batch  950/1077 - Loss: 0.0161\n",
+      "Epoch   4 Batch 1000/1077 - Loss: 0.0217\n",
+      "Epoch   4 Batch 1050/1077 - Loss: 0.0244\n",
+      "Epoch   5 Batch   50/1077 - Loss: 0.0258\n",
+      "Epoch   5 Batch  100/1077 - Loss: 0.0159\n",
+      "Epoch   5 Batch  150/1077 - Loss: 0.0165\n",
+      "Epoch   5 Batch  200/1077 - Loss: 0.0178\n",
+      "Epoch   5 Batch  250/1077 - Loss: 0.0189\n",
+      "Epoch   5 Batch  300/1077 - Loss: 0.0224\n",
+      "Epoch   5 Batch  350/1077 - Loss: 0.0186\n",
+      "Epoch   5 Batch  400/1077 - Loss: 0.0163\n",
+      "Epoch   5 Batch  450/1077 - Loss: 0.0176\n",
+      "Epoch   5 Batch  500/1077 - Loss: 0.0169\n",
+      "Epoch   5 Batch  550/1077 - Loss: 0.0232\n",
+      "Epoch   5 Batch  600/1077 - Loss: 0.0247\n",
+      "Epoch   5 Batch  650/1077 - Loss: 0.0141\n",
+      "Epoch   5 Batch  700/1077 - Loss: 0.0127\n",
+      "Epoch   5 Batch  750/1077 - Loss: 0.0129\n",
+      "Epoch   5 Batch  800/1077 - Loss: 0.0215\n",
+      "Epoch   5 Batch  850/1077 - Loss: 0.0154\n",
+      "Epoch   5 Batch  900/1077 - Loss: 0.0185\n",
+      "Epoch   5 Batch  950/1077 - Loss: 0.0129\n",
+      "Epoch   5 Batch 1000/1077 - Loss: 0.0168\n",
+      "Epoch   5 Batch 1050/1077 - Loss: 0.0189\n",
+      "Epoch   6 Batch   50/1077 - Loss: 0.0210\n",
+      "Epoch   6 Batch  100/1077 - Loss: 0.0127\n",
+      "Epoch   6 Batch  150/1077 - Loss: 0.0126\n",
+      "Epoch   6 Batch  200/1077 - Loss: 0.0142\n",
+      "Epoch   6 Batch  250/1077 - Loss: 0.0139\n",
+      "Epoch   6 Batch  300/1077 - Loss: 0.0179\n",
+      "Epoch   6 Batch  350/1077 - Loss: 0.0153\n",
+      "Epoch   6 Batch  400/1077 - Loss: 0.0145\n",
+      "Epoch   6 Batch  450/1077 - Loss: 0.0143\n",
+      "Epoch   6 Batch  500/1077 - Loss: 0.0144\n",
+      "Epoch   6 Batch  550/1077 - Loss: 0.0182\n",
+      "Epoch   6 Batch  600/1077 - Loss: 0.0193\n",
+      "Epoch   6 Batch  650/1077 - Loss: 0.0122\n",
+      "Epoch   6 Batch  700/1077 - Loss: 0.0096\n",
+      "Epoch   6 Batch  750/1077 - Loss: 0.0107\n",
+      "Epoch   6 Batch  800/1077 - Loss: 0.0170\n",
+      "Epoch   6 Batch  850/1077 - Loss: 0.0120\n",
+      "Epoch   6 Batch  900/1077 - Loss: 0.0152\n",
+      "Epoch   6 Batch  950/1077 - Loss: 0.0115\n",
+      "Epoch   6 Batch 1000/1077 - Loss: 0.0144\n",
+      "Epoch   6 Batch 1050/1077 - Loss: 0.0145\n",
+      "Epoch   7 Batch   50/1077 - Loss: 0.0190\n",
+      "Epoch   7 Batch  100/1077 - Loss: 0.0118\n",
+      "Epoch   7 Batch  150/1077 - Loss: 0.0109\n",
+      "Epoch   7 Batch  200/1077 - Loss: 0.0110\n",
+      "Epoch   7 Batch  250/1077 - Loss: 0.0115\n",
+      "Epoch   7 Batch  300/1077 - Loss: 0.0145\n",
+      "Epoch   7 Batch  350/1077 - Loss: 0.0125\n",
+      "Epoch   7 Batch  400/1077 - Loss: 0.0127\n",
+      "Epoch   7 Batch  450/1077 - Loss: 0.0121\n",
+      "Epoch   7 Batch  500/1077 - Loss: 0.0125\n",
+      "Epoch   7 Batch  550/1077 - Loss: 0.0146\n",
+      "Epoch   7 Batch  600/1077 - Loss: 0.0157\n",
+      "Epoch   7 Batch  650/1077 - Loss: 0.0105\n",
+      "Epoch   7 Batch  700/1077 - Loss: 0.0078\n",
+      "Epoch   7 Batch  750/1077 - Loss: 0.0076\n",
+      "Epoch   7 Batch  800/1077 - Loss: 0.0136\n",
+      "Epoch   7 Batch  850/1077 - Loss: 0.0109\n",
+      "Epoch   7 Batch  900/1077 - Loss: 0.0133\n",
+      "Epoch   7 Batch  950/1077 - Loss: 0.0090\n",
+      "Epoch   7 Batch 1000/1077 - Loss: 0.0121\n",
+      "Epoch   7 Batch 1050/1077 - Loss: 0.0115\n",
+      "Epoch   8 Batch   50/1077 - Loss: 0.0159\n",
+      "Epoch   8 Batch  100/1077 - Loss: 0.0096\n",
+      "Epoch   8 Batch  150/1077 - Loss: 0.0090\n",
+      "Epoch   8 Batch  200/1077 - Loss: 0.0092\n",
+      "Epoch   8 Batch  250/1077 - Loss: 0.0101\n",
+      "Epoch   8 Batch  300/1077 - Loss: 0.0122\n",
+      "Epoch   8 Batch  350/1077 - Loss: 0.0115\n",
+      "Epoch   8 Batch  400/1077 - Loss: 0.0103\n",
+      "Epoch   8 Batch  450/1077 - Loss: 0.0121\n",
+      "Epoch   8 Batch  500/1077 - Loss: 0.0111\n",
+      "Epoch   8 Batch  550/1077 - Loss: 0.0114\n",
+      "Epoch   8 Batch  600/1077 - Loss: 0.0142\n",
+      "Epoch   8 Batch  650/1077 - Loss: 0.0086\n",
+      "Epoch   8 Batch  700/1077 - Loss: 0.0076\n",
+      "Epoch   8 Batch  750/1077 - Loss: 0.0063\n",
+      "Epoch   8 Batch  800/1077 - Loss: 0.0119\n",
+      "Epoch   8 Batch  850/1077 - Loss: 0.0089\n",
+      "Epoch   8 Batch  900/1077 - Loss: 0.0125\n",
+      "Epoch   8 Batch  950/1077 - Loss: 0.0071\n",
+      "Epoch   8 Batch 1000/1077 - Loss: 0.0111\n",
+      "Epoch   8 Batch 1050/1077 - Loss: 0.0094\n",
+      "Epoch   9 Batch   50/1077 - Loss: 0.0139\n",
+      "Epoch   9 Batch  100/1077 - Loss: 0.0093\n",
+      "Epoch   9 Batch  150/1077 - Loss: 0.0069\n",
+      "Epoch   9 Batch  200/1077 - Loss: 0.0079\n",
+      "Epoch   9 Batch  250/1077 - Loss: 0.0078\n",
+      "Epoch   9 Batch  300/1077 - Loss: 0.0108\n",
+      "Epoch   9 Batch  350/1077 - Loss: 0.0099\n",
+      "Epoch   9 Batch  400/1077 - Loss: 0.0093\n",
+      "Epoch   9 Batch  450/1077 - Loss: 0.0093\n",
+      "Epoch   9 Batch  500/1077 - Loss: 0.0095\n",
+      "Epoch   9 Batch  550/1077 - Loss: 0.0099\n"
+     ]
+    },
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Epoch   9 Batch  600/1077 - Loss: 0.0127\n",
+      "Epoch   9 Batch  650/1077 - Loss: 0.0075\n",
+      "Epoch   9 Batch  700/1077 - Loss: 0.0068\n",
+      "Epoch   9 Batch  750/1077 - Loss: 0.0058\n",
+      "Epoch   9 Batch  800/1077 - Loss: 0.0094\n",
+      "Epoch   9 Batch  850/1077 - Loss: 0.0078\n",
+      "Epoch   9 Batch  900/1077 - Loss: 0.0112\n",
+      "Epoch   9 Batch  950/1077 - Loss: 0.0057\n",
+      "Epoch   9 Batch 1000/1077 - Loss: 0.0108\n",
+      "Epoch   9 Batch 1050/1077 - Loss: 0.0088\n",
+      "Model Trained and Saved\n"
+     ]
+    }
+   ],
+   "source": [
+    "with tf.Session(graph=train_graph) as sess:\n",
+    "    sess.run(tf.global_variables_initializer())\n",
+    "\n",
+    "    for epoch_i in range(epochs):\n",
+    "        for batch_i, (source_batch, target_batch, sources_lengths, targets_lengths) in enumerate(\n",
+    "                get_batches(source_text_to_int, target_text_to_int, batch_size)):\n",
+    "    \n",
+    "            _, loss = sess.run(\n",
+    "                [train_op, cost],\n",
+    "                {inputs: source_batch,\n",
+    "                 targets: target_batch,\n",
+    "                 learning_rate: lr,\n",
+    "                 source_sequence_len: sources_lengths,\n",
+    "                 target_sequence_len: targets_lengths})\n",
+    "\n",
+    "\n",
+    "            if batch_i % display_step == 0 and batch_i > 0:\n",
+    "\n",
+    "\n",
+    "                batch_train_logits = sess.run(\n",
+    "                    inference_logits,\n",
+    "                    {inputs: source_batch,\n",
+    "                     source_sequence_len: sources_lengths,\n",
+    "                     target_sequence_len: targets_lengths})\n",
+    "\n",
+    "                print('Epoch {:>3} Batch {:>4}/{} - Loss: {:>6.4f}'\n",
+    "                      .format(epoch_i, batch_i, len(source_text_to_int) // batch_size, loss))\n",
+    "        \n",
+    "    # Save Model\n",
+    "    saver = tf.train.Saver()\n",
+    "    saver.save(sess, \"checkpoints/dev\")\n",
+    "    print('Model Trained and Saved')"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# 5 预测"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 37,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "def sentence_to_seq(sentence, source_vocab_to_int):\n",
+    "    \"\"\"\n",
+    "    将句子转化为数字编码\n",
+    "    \"\"\"\n",
+    "    unk_idx = source_vocab_to_int[\"<UNK>\"]\n",
+    "    word_idx = [source_vocab_to_int.get(word, unk_idx) for word in sentence.lower().split()]\n",
+    "    \n",
+    "    return word_idx"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 57,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "请输入句子：i dislike grapefruit , lemons , and peaches .\n"
+     ]
+    }
+   ],
+   "source": [
+    "translate_sentence_text = input(\"请输入句子：\")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 58,
+   "metadata": {
+    "scrolled": true
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "INFO:tensorflow:Restoring parameters from ./checkpoints/dev\n",
+      "【Input】\n",
+      "  Word Ids:      [91, 4, 105, 210, 162, 210, 62, 63, 150]\n",
+      "  English Words: ['i', 'dislike', 'grapefruit', ',', 'lemons', ',', 'and', 'peaches', '.']\n",
+      "\n",
+      "【Prediction】\n",
+      "  Word Ids:      [224, 238, 230, 93, 264, 263, 145, 264, 270, 61, 1]\n",
+      "  French Words: ['je', \"n'aime\", 'pamplemousses', ',', 'les', 'citrons', 'et', 'les', 'mangues', '.', '<EOS>']\n",
+      "\n",
+      "【Full Sentence】\n",
+      "je n'aime pamplemousses , les citrons et les mangues . <EOS>\n"
+     ]
+    }
+   ],
+   "source": [
+    "translate_sentence = sentence_to_seq(translate_sentence_text, source_vocab_to_int)\n",
+    "\n",
+    "loaded_graph = tf.Graph()\n",
+    "with tf.Session(graph=loaded_graph) as sess:\n",
+    "    # Load saved model\n",
+    "    loader = tf.train.import_meta_graph('checkpoints/dev.meta')\n",
+    "    loader.restore(sess, tf.train.latest_checkpoint('./checkpoints'))\n",
+    "\n",
+    "    input_data = loaded_graph.get_tensor_by_name('inputs:0')\n",
+    "    logits = loaded_graph.get_tensor_by_name('predictions:0')\n",
+    "    target_sequence_length = loaded_graph.get_tensor_by_name('target_sequence_len:0')\n",
+    "    source_sequence_length = loaded_graph.get_tensor_by_name('source_sequence_len:0')\n",
+    "\n",
+    "    translate_logits = sess.run(logits, {input_data: [translate_sentence]*batch_size,\n",
+    "                                         target_sequence_length: [len(translate_sentence)*2]*batch_size,\n",
+    "                                         source_sequence_length: [len(translate_sentence)]*batch_size})[0]\n",
+    "\n",
+    "print('【Input】')\n",
+    "print('  Word Ids:      {}'.format([i for i in translate_sentence]))\n",
+    "print('  English Words: {}'.format([source_int_to_vocab[i] for i in translate_sentence]))\n",
+    "\n",
+    "print('\\n【Prediction】')\n",
+    "print('  Word Ids:      {}'.format([i for i in translate_logits]))\n",
+    "print('  French Words: {}'.format([target_int_to_vocab[i] for i in translate_logits]))\n",
+    "\n",
+    "print(\"\\n【Full Sentence】\")\n",
+    "print(\" \".join([target_int_to_vocab[i] for i in translate_logits]))"
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.6.3"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 2
+}
