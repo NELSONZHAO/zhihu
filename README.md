@@ -66,5 +66,11 @@
 > 文章地址：[基于TensorFlow框架的Seq2Seq英法机器翻译模型](https://zhuanlan.zhihu.com/p/37148308)
 ![](https://raw.githubusercontent.com/NELSONZHAO/zhihu/master/machine_translation_seq2seq/pic.png)
 
+### 11.mt\_attention\_birnn
+该代码基于Keras框架，在基础Seq2Seq模型基础上增加Attention机制与BiRNN，进一步提升翻译模型的效果；同时可视化Attention层，加深读者对Attention工作机制的理解。模型在在训练样本上的BLEU分数接近0.9。
+> 文章地址：[基于Keras框架实现加入Attention与BiRNN的机器翻译模型](https://zhuanlan.zhihu.com/p/37290775)
+>![](https://raw.githubusercontent.com/NELSONZHAO/zhihu/master/mt_attention_birnn/pic1.png)
+![](https://raw.githubusercontent.com/NELSONZHAO/zhihu/master/mt_attention_birnn/pic2.png)
+
 
 ### 不定期更新干货，欢迎Star，欢迎Fork。
