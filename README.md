@@ -72,5 +72,10 @@
 >![](https://raw.githubusercontent.com/NELSONZHAO/zhihu/master/mt_attention_birnn/pic1.png)
 ![](https://raw.githubusercontent.com/NELSONZHAO/zhihu/master/mt_attention_birnn/pic2.png)
 
+### 12.sentiment\_analysis
+该代码基于TensorFlow 1.6版本，用DNN、LSTM以及CNN分别构建了sentiment analysis模型，并分析与比较了不同模型的性能。
+> 文章地址：[DNN/LSTM/Text-CNN情感分类实战与分析](https://zhuanlan.zhihu.com/p/37978321)
+>![](https://raw.githubusercontent.com/NELSONZHAO/zhihu/master/sentiment_analysis/images/cnn.png)
+
 
 ### 不定期更新干货，欢迎Star，欢迎Fork。
