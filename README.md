@@ -84,5 +84,6 @@
 > ![](https://raw.githubusercontent.com/NELSONZHAO/zhihu/master/image_style_transfer/images/marvel_starry_night.gif)
 > ![](https://raw.githubusercontent.com/NELSONZHAO/zhihu/master/image_style_transfer/images/marvel_scream.gif)
 > ![](https://raw.githubusercontent.com/NELSONZHAO/zhihu/master/image_style_transfer/images/marvel_guernica.gif)
+> ![](https://raw.githubusercontent.com/NELSONZHAO/zhihu/master/image_style_transfer/images/scenery_starry_night.gif)
 
 ### 不定期更新干货，欢迎Star，欢迎Fork。
