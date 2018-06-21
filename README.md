@@ -77,5 +77,12 @@
 > 文章地址：[DNN/LSTM/Text-CNN情感分类实战与分析](https://zhuanlan.zhihu.com/p/37978321)
 >![](https://raw.githubusercontent.com/NELSONZHAO/zhihu/master/sentiment_analysis/images/cnn.png)
 
+### 13.image\_style_\transfer
+代码基于TensorFlow 1.6实现了Image Style Transfer模型，实现了图片的风格的学习与转换。
+> 文章地址：[基于TensorFlow构建图片风格迁移模型](https://zhuanlan.zhihu.com/p/38315161)
+> ![](https://raw.githubusercontent.com/NELSONZHAO/zhihu/master/image_style_transfer/images/figures.png)
+> ![](https://raw.githubusercontent.com/NELSONZHAO/zhihu/master/image_style_transfer/images/marvel_starry_night.gif)
+> ![](https://raw.githubusercontent.com/NELSONZHAO/zhihu/master/image_style_transfer/images/marvel_scream.gif)
+> ![](https://raw.githubusercontent.com/NELSONZHAO/zhihu/master/image_style_transfer/images/marvel_guernica.gif)
 
 ### 不定期更新干货，欢迎Star，欢迎Fork。
