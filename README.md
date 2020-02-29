@@ -86,4 +86,11 @@
 > ![](https://raw.githubusercontent.com/NELSONZHAO/zhihu/master/image_style_transfer/images/marvel_guernica.gif)
 > ![](https://raw.githubusercontent.com/NELSONZHAO/zhihu/master/image_style_transfer/images/marvel_pattern.gif)
 
+### 14.ctr_models
+代码基于TensorFlow 2.0版本实现了DeepFM、Deep&Cross、xDeepFM以及AutoInt四个算法。
+文章地址：[CTR预估模型：DeepFM/Deep&Cross/xDeepFM/AutoInt代码实战与讲解](https://zhuanlan.zhihu.com/p/109933924)
+> ![](https://raw.githubusercontent.com/NELSONZHAO/zhihu/master/ctr_models/pictures/attention.png)
+
+
+
 ### 不定期更新干货，欢迎Star，欢迎Fork。
